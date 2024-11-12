@@ -1,5 +1,5 @@
 #!/bin/bash
-# $1 z_height $2 filename
+# $1 z_height $2 filename $3 z_offset
 
 mkdir -p ~/printer_data/gcodes/.plr
 filepath=$(sed -n "s/.*filepath *= *'\([^']*\)'.*/\1/p" /home/klipper/printer_data/config/config_variables.cfg)
@@ -17,7 +17,8 @@ file_content=$(cat "${filepath}" | awk '/; thumbnail begin/{flag=1;next}/; thumb
 
 echo "$file_content" | sed  's/\r$//' | awk -F"Z" 'BEGIN{OFS="Z"} {if ($2 ~ /^[0-9]+$/) $2=$2".0"} 1' > /home/klipper/plrtmpA.$$
 sed -i 's/Z\./Z0\./g' /home/klipper/plrtmpA.$$
-cat /home/klipper/plrtmpA.$$ | sed -e '1,/Z'${1}'/ d' | sed -ne '/ Z/,$ p' | grep -m 1 ' Z' | sed -ne 's/.* Z\([^ ]*\).*/SET_KINEMATIC_POSITION Z=\1/p' > ${PLR_PATH}/"${plr}"
+z_pos=$(echo "${1} + ${3}" | bc)
+cat /home/klipper/plrtmpA.$$ | sed -e '1,/Z'${1}'/ d' | sed -ne '/ Z/,$ p' | grep -m 1 ' Z' | sed -ne "s/.* Z\([^ ]*\).*/SET_KINEMATIC_POSITION Z=${z_pos}/p" > ${PLR_PATH}/"${plr}"
 
 
 cat /home/klipper/plrtmpA.$$ | sed '/ Z'${1}'/q' | sed -ne '/\(M104\|M140\|M109\|M190\|M106\)/p' >> ${PLR_PATH}/"${plr}"
