@@ -1,5 +1,5 @@
 #!/bin/bash
-# $1 z_height $2 filename
+# $1 z_height $2 filename $3 z_offset
 
 mkdir -p ~/printer_data/gcodes/.plr
 filepath=$(sed -n "s/.*filepath *= *'\([^']*\)'.*/\1/p" /home/klipper/printer_data/config/config_variables.cfg)
@@ -17,10 +17,10 @@ file_content=$(cat "${filepath}" | awk '/; thumbnail begin/{flag=1;next}/; thumb
 
 echo "$file_content" | sed  's/\r$//' | awk -F"Z" 'BEGIN{OFS="Z"} {if ($2 ~ /^[0-9]+$/) $2=$2".0"} 1' > /home/klipper/plrtmpA.$$
 sed -i 's/Z\./Z0\./g' /home/klipper/plrtmpA.$$
-cat /home/klipper/plrtmpA.$$ | sed -e '1,/Z'${1}'/ d' | sed -ne '/ Z/,$ p' | grep -m 1 ' Z' | sed -ne 's/.* Z\([^ ]*\).*/SET_KINEMATIC_POSITION Z=\1/p' > ${PLR_PATH}/"${plr}"
+z_pos=$(echo "${1} + ${3}" | bc)
+cat /home/klipper/plrtmpA.$$ | sed -e '1,/Z'${1}'/ d' | sed -ne '/ Z/,$ p' | grep -m 1 ' Z' | sed -ne "s/.* Z\([^ ]*\).*/SET_KINEMATIC_POSITION Z=${z_pos}/p" > ${PLR_PATH}/"${plr}"
 
-
-cat /home/klipper/plrtmpA.$$ | sed '/ Z'${1}'/q' | sed -ne '/\(M104\|M140\|M109\|M190\|M106\)/p' >> ${PLR_PATH}/"${plr}"
+cat /home/klipper/plrtmpA.$$ | sed '/ Z'${1}'/q' | sed -ne '/\(M104\|M140\|M109\|M190\)/p' >> ${PLR_PATH}/"${plr}"
 
 line=$(cat /home/klipper/plrtmpA.$$ | sed '/ Z'${1}'/q' | sed -n '/START_PRINT/p')
 
@@ -70,17 +70,25 @@ echo 'G28 X Y' >> ${PLR_PATH}/"${plr}"
 cat /home/klipper/plrtmpA.$$ | sed '/ Z'${1}'/q' | sed -ne '/\(ACTIVATE_COPY_MODE\|ACTIVATE_MIRROR_MODE\)/p' >> ${PLR_PATH}/"${plr}"
 echo 'G1 X5' >> ${PLR_PATH}/"${plr}"
 echo 'G1 Y5' >> ${PLR_PATH}/"${plr}"
+cat /home/klipper/plrtmpA.$$ | sed -n '1,/Z'"${1}"'/p'| tac | grep -m 1 -o '^[T][01]' >> ${PLR_PATH}/"${plr}"
 echo 'G91' >> ${PLR_PATH}/"${plr}"
 echo 'G1 Z-5' >> ${PLR_PATH}/"${plr}"
 echo 'G90' >> ${PLR_PATH}/"${plr}"
 echo 'M106 S204' >> ${PLR_PATH}/"${plr}"
 
-#tac /home/klipper/plrtmpA.$$ | sed -e '/ Z'${1}'[^0-9]*$/q' | tac | tail -n+2 | sed -ne '/ Z/,$ p' >> ${PLR_PATH}/"${plr}"
 first_line=$(cat /home/klipper/plrtmpA.$$ |sed -e '1,/Z'${1}'/ d' | sed -ne '/ Z/,$ p' | grep -m 1 ' Z' | grep -E 'F[0-9]+' | sed -E 's/F[0-9]+/F3000/g')
 if [ "${first_line}" = "" ];then
     cat /home/klipper/plrtmpA.$$ | sed -e '1,/Z'${1}'/ d' | sed -ne '/ Z/,$ p' >> ${PLR_PATH}/"${plr}"
 else
+    line=$(cat /home/klipper/plrtmpA.$$ | sed -e '1,/Z'${1}'/ d' | sed -ne '/ Z/,$ p' | grep -m 1 ' Z')
+    z_pos=$(echo "$line" | sed -n 's/.*Z\([0-9.]*\).*/\1/p')
+    if [[ ${1} != $z_pos ]]; then
+        first_line=$(cat /home/klipper/plrtmpA.$$ |sed -e '1,/Z'${1}'/ { /Z'${1}'/!d }' | sed -ne '/ Z/,$ p' | grep -m 1 ' Z' | grep -E 'F[0-9]+' | sed -E 's/F[0-9]+/F3000/g')
     echo ${first_line} >> ${PLR_PATH}/"${plr}"
+        cat /home/klipper/plrtmpA.$$ | sed -e '1,/Z'${1}'/ { /Z'${1}'/!d }' | sed -ne '/ Z/,$ p' | tail -n +2 >> ${PLR_PATH}/"${plr}"
+    else
+        echo ${first_line} >> ${PLR_PATH}/"${plr}"
     cat /home/klipper/plrtmpA.$$ | sed -e '1,/Z'${1}'/ d' | sed -ne '/ Z/,$ p' | tail -n +2 >> ${PLR_PATH}/"${plr}"
+    fi
 fi
 rm /home/klipper/plrtmpA.$$
